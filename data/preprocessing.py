@@ -134,23 +134,37 @@ class Preprocessor:
     def load_text_embedding(self, path: str) -> np.ndarray:
         """
         Load a pre-computed CLIP text embedding from a .npy file.
-        - Squeezes to 1-D if needed
-        - L2-normalises
+
+        Handles all common shapes from TextBraTS:
+          (D,)         → single vector, use as-is
+          (1, D)       → single token, squeeze
+          (N, D)       → token-level embeddings, mean-pool → (D,)
 
         Returns:
-            np.ndarray of shape (TEXT_EMBED_DIM,), dtype float32
+            np.ndarray of shape (TEXT_EMBED_DIM,), dtype float32, L2-normalised
         """
         embed = np.load(path).astype(np.float32)
 
-        # (1, D) → (D,)  or  (D,) stays as-is
-        if embed.ndim > 1:
-            embed = embed.reshape(-1)
+        if embed.ndim == 1:
+            # Already (D,) — use as-is
+            pass
+        elif embed.ndim == 2:
+            # (N_tokens, D) or (1, D) — mean-pool across token dimension
+            embed = embed.mean(axis=0)   # → (D,)
+        else:
+            # Higher-dim fallback: squeeze then mean-pool
+            embed = embed.squeeze()
+            if embed.ndim == 2:
+                embed = embed.mean(axis=0)
+            elif embed.ndim > 2:
+                embed = embed.reshape(-1, embed.shape[-1]).mean(axis=0)
 
+        # L2-normalise
         norm = np.linalg.norm(embed)
         if norm > 1e-6:
             embed = embed / norm
 
-        return embed  # (D,)
+        return embed.astype(np.float32)  # (TEXT_EMBED_DIM,)
 
     def load_text_report(self, path: str) -> str:
         """Load raw radiology text from a .txt file."""
