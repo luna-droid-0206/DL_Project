@@ -17,7 +17,7 @@ class Config:
     CLIP_IMAGE_SIZE    = 224       # CLIP input size
 
     # ── Text Embedding ──────────────────────────────────────────────────────────
-    TEXT_EMBED_DIM = 512           # CLIP ViT-B/32 text embedding dimension
+    TEXT_EMBED_DIM = 768           # TextBraTS uses 768-dim embeddings (ViT-L/BERT)
 
     # ── Model Architecture ──────────────────────────────────────────────────────
     IN_CHANNELS         = 1        # Grayscale MRI
