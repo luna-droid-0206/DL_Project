@@ -229,7 +229,7 @@ class Visualizer:
         sns.histplot(scores, bins=30, kde=True, ax=ax,
                      color=PALETTE["train"],
                      edgecolor="#0f1117", linewidth=0.4,
-                     kde_kws={"color": PALETTE["val"], "lw": 2})
+                     line_kws={"color": PALETTE["val"], "lw": 2})
 
         ax.axvline(scores.mean(), color=PALETTE["overlay"],
                    lw=2, linestyle="--",
