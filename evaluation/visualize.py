@@ -157,12 +157,13 @@ class Visualizer:
         fig.suptitle("Ablation Study: With Text vs Without Text",
                      fontsize=14, color="#e0e0e0")
 
-        epochs = range(1, len(history_with["val_dice"]) + 1)
+        epochs_with = range(1, len(history_with["val_dice"]) + 1)
+        epochs_without = range(1, len(history_without["val_dice"]) + 1)
 
         # Val Dice curve
-        axes[0].plot(epochs, history_with["val_dice"],
+        axes[0].plot(epochs_with, history_with["val_dice"],
                      color=PALETTE["with"], lw=2, label="With Text")
-        axes[0].plot(epochs, history_without["val_dice"],
+        axes[0].plot(epochs_without, history_without["val_dice"],
                      color=PALETTE["without"], lw=2,
                      linestyle="--", label="Without Text")
         axes[0].set_title("Val Dice Score vs Epoch")
@@ -172,9 +173,9 @@ class Visualizer:
         axes[0].grid(True)
 
         # Val IoU curve
-        axes[1].plot(epochs, history_with["val_iou"],
+        axes[1].plot(epochs_with, history_with["val_iou"],
                      color=PALETTE["with"], lw=2, label="With Text")
-        axes[1].plot(epochs, history_without["val_iou"],
+        axes[1].plot(epochs_without, history_without["val_iou"],
                      color=PALETTE["without"], lw=2,
                      linestyle="--", label="Without Text")
         axes[1].set_title("Val IoU Score vs Epoch")
