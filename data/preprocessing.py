@@ -25,6 +25,32 @@ class Preprocessor:
 
     # ── Image ──────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _to_2d(arr: np.ndarray) -> np.ndarray:
+        """
+        Robustly collapse any ndarray to (H, W).
+
+        Handles shapes:
+          (H, W)       → unchanged
+          (1, H, W)    → squeeze leading dim
+          (H, W, 1)    → squeeze trailing dim
+          (H, W, C)    → take first channel
+          (N, H, W, C) → take first sample, first channel
+        """
+        arr = np.squeeze(arr)          # remove ALL size-1 dims first
+        if arr.ndim == 2:
+            return arr                 # already (H, W)
+        if arr.ndim == 3:
+            # (C, H, W) or (H, W, C) — pick first channel
+            if arr.shape[0] < arr.shape[-1]:
+                return arr[0]          # (C, H, W) → first channel
+            else:
+                return arr[..., 0]    # (H, W, C) → first channel
+        # Fallback: flatten to 2D by taking [0] repeatedly
+        while arr.ndim > 2:
+            arr = arr[0]
+        return arr
+
     def load_image(self, path: str) -> np.ndarray:
         """
         Load a .npy MRI slice.
@@ -36,10 +62,7 @@ class Preprocessor:
             np.ndarray of shape (H, W), dtype float32
         """
         img = np.load(path).astype(np.float32)
-
-        # Handle any extra leading dimensions, e.g. (1, H, W) → (H, W)
-        while img.ndim > 2:
-            img = img.squeeze(0)
+        img = self._to_2d(img)
 
         # Min-max normalisation per slice
         lo, hi = img.min(), img.max()
@@ -62,9 +85,7 @@ class Preprocessor:
             np.ndarray of shape (H, W), dtype float32, values in {0, 1}
         """
         mask = np.load(path).astype(np.float32)
-
-        while mask.ndim > 2:
-            mask = mask.squeeze(0)
+        mask = self._to_2d(mask)
 
         mask = (mask > 0).astype(np.float32)
         mask = cv2.resize(mask, (self.image_size, self.image_size),
