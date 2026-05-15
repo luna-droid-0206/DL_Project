@@ -98,8 +98,10 @@ def collect_predictions(model, loader, n: int = 64, tumor_only: bool = True):
         for i in range(len(img_np)):
             if len(images) >= n:
                 break
-            # ── Skip empty slices when tumor_only is set ──────────────────
-            if tumor_only and mask_np[i].sum() < 1.0:
+            # ── Skip slices without a meaningful tumour region ────────────
+            # mask.sum() < 100 excludes near-empty edge slices (1-few pixels)
+            # that produce artefactual Dice ≈ 0.5 and black input images.
+            if tumor_only and mask_np[i].sum() < 100.0:
                 continue
 
             # Per-sample Dice (scalar for this one slice)

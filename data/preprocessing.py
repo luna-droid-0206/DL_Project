@@ -31,22 +31,30 @@ class Preprocessor:
         Robustly collapse any ndarray to (H, W).
 
         Handles shapes:
-          (H, W)       → unchanged
-          (1, H, W)    → squeeze leading dim
-          (H, W, 1)    → squeeze trailing dim
-          (H, W, C)    → take first channel
-          (N, H, W, C) → take first sample, first channel
+          (H, W)       -> unchanged
+          (1, H, W)    -> squeeze axis 0
+          (H, W, 1)    -> squeeze axis 2
+          (C, H, W)    -> take arr[0]        (C is the smallest axis)
+          (H, W, C)    -> take arr[..., 0]   (C is the smallest axis)
+          (N, H, W, C) -> take first sample, first channel
+
+        The channel axis is identified as the axis with the MINIMUM size,
+        since spatial dimensions (H, W) are always much larger than the
+        channel count (1 or 4).  This avoids the fragile shape[0] < shape[-1]
+        heuristic which can misfire on small or non-square slices and cause
+        image-mask spatial misalignment.
         """
         arr = np.squeeze(arr)          # remove ALL size-1 dims first
         if arr.ndim == 2:
             return arr                 # already (H, W)
         if arr.ndim == 3:
-            # (C, H, W) or (H, W, C) — pick first channel
-            if arr.shape[0] < arr.shape[-1]:
-                return arr[0]          # (C, H, W) → first channel
+            # Identify channel axis as the one with the smallest size
+            ch_axis = int(np.argmin(arr.shape))
+            if ch_axis == 0:
+                return arr[0]          # (C, H, W) -> first channel
             else:
-                return arr[..., 0]    # (H, W, C) → first channel
-        # Fallback: flatten to 2D by taking [0] repeatedly
+                return arr[..., 0]     # (H, W, C) -> first channel
+        # Fallback for 4-D+: take [0] along axis 0 repeatedly
         while arr.ndim > 2:
             arr = arr[0]
         return arr

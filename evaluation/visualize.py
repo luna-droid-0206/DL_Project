@@ -256,23 +256,44 @@ class Visualizer:
                                run_name:    str = "run"):
         """
         Histogram + KDE of per-sample Dice scores.
+        Reference lines: Mean, Median, Q10 (worst-10% threshold).
         """
-        fig, ax = plt.subplots(figsize=(10, 5))
+        fig, ax = plt.subplots(figsize=(12, 5))
         scores  = np.array(dice_scores)
 
-        sns.histplot(scores, bins=30, kde=True, ax=ax,
+        sns.histplot(scores, bins=40, kde=True, ax=ax,
                      color=PALETTE["train"],
                      edgecolor="#0f1117", linewidth=0.4,
                      line_kws={"color": PALETTE["val"], "lw": 2})
 
-        ax.axvline(scores.mean(), color=PALETTE["overlay"],
-                   lw=2, linestyle="--",
-                   label=f"Mean = {scores.mean():.3f}")
-        ax.axvline(np.percentile(scores, 25), color=PALETTE["without"],
-                   lw=1.5, linestyle=":",
-                   label=f"Q25 = {np.percentile(scores, 25):.3f}")
+        mean_v   = scores.mean()
+        median_v = float(np.median(scores))
+        q10_v    = float(np.percentile(scores, 10))
 
-        ax.set_title("Dice Score Distribution", fontsize=13)
+        ax.axvline(mean_v,   color=PALETTE["overlay"],  lw=2,   linestyle="--",
+                   label=f"Mean   = {mean_v:.3f}")
+        ax.axvline(median_v, color=PALETTE["with"],     lw=1.5, linestyle="-.",
+                   label=f"Median = {median_v:.3f}")
+        ax.axvline(q10_v,    color=PALETTE["without"],  lw=1.5, linestyle=":",
+                   label=f"Q10    = {q10_v:.3f}  (worst 10%)")
+
+        # Summary stats text box
+        stats_txt = (
+            f"n = {len(scores)}\n"
+            f"std = {scores.std():.3f}\n"
+            f"min = {scores.min():.3f}\n"
+            f"max = {scores.max():.3f}"
+        )
+        ax.text(0.02, 0.97, stats_txt,
+                transform=ax.transAxes, fontsize=9,
+                verticalalignment="top",
+                bbox=dict(boxstyle="round,pad=0.4",
+                          facecolor="#1a1d2e", edgecolor="#3a3d52",
+                          alpha=0.85),
+                color="#e0e0e0")
+
+        ax.set_title("Dice Score Distribution (per-slice, full validation set)",
+                     fontsize=13)
         ax.set_xlabel("Dice Score")
         ax.set_ylabel("Count")
         ax.legend(framealpha=0.2)
