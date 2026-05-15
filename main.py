@@ -25,7 +25,7 @@ from config import Config
 from data.dataset import BraTSDataset
 from models.full_model import MultimodalSegNet
 from training.train import Trainer
-from training.metrics import SegmentationMetrics, compute_rouge, compute_bleu
+from training.metrics import SegmentationMetrics, dice_coefficient, compute_rouge, compute_bleu
 from evaluation.visualize import Visualizer
 from evaluation.gradcam import GradCAM
 from evaluation.tsne import TSNEVisualizer
@@ -70,10 +70,18 @@ def build_loaders(use_text: bool = True):
 # ── Inference helpers ──────────────────────────────────────────────────────────
 
 @torch.no_grad()
-def collect_predictions(model, loader, n: int = 64):
-    """Collect n predictions for visualisation."""
+def collect_predictions(model, loader, n: int = 64, tumor_only: bool = True):
+    """
+    Collect up to n predictions for visualisation.
+
+    Args:
+        tumor_only: if True, skip slices where the ground-truth mask is
+                    all-zero (no tumour present). This ensures the
+                    segmentation grid always shows meaningful content.
+    """
     model.eval()
     images, gt_masks, pred_masks, reports = [], [], [], []
+    per_sample_dice = []              # one Dice value per collected slice
     device = Config.DEVICE
 
     for batch in loader:
@@ -84,22 +92,32 @@ def collect_predictions(model, loader, n: int = 64):
 
         out  = model(img, te)
         pred = out["mask_pred"].cpu().numpy()
-        img  = img.cpu().numpy()
-        mask = mask.cpu().numpy()
+        img_np  = img.cpu().numpy()
+        mask_np = mask.cpu().numpy()
 
-        for i in range(len(img)):
+        for i in range(len(img_np)):
             if len(images) >= n:
                 break
-            images.append(img[i])
-            gt_masks.append(mask[i])
+            # ── Skip empty slices when tumor_only is set ──────────────────
+            if tumor_only and mask_np[i].sum() < 1.0:
+                continue
+
+            # Per-sample Dice (scalar for this one slice)
+            p = torch.from_numpy(pred[i:i+1])
+            m = torch.from_numpy(mask_np[i:i+1])
+            d = dice_coefficient(p, m)
+
+            images.append(img_np[i])
+            gt_masks.append(mask_np[i])
             pred_masks.append(pred[i])
             reports.append(rpts[i])
+            per_sample_dice.append(d)
 
         if len(images) >= n:
             break
 
     return (np.array(images), np.array(gt_masks),
-            np.array(pred_masks), reports)
+            np.array(pred_masks), reports, per_sample_dice)
 
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────
@@ -168,7 +186,9 @@ def run(args):
 
     # ── 6. Segmentation visualisations ───────────────────────────────────────
     print("\n[6/7] Generating visualisations …")
-    imgs, gt, preds, reports = collect_predictions(model_with, val_loader)
+    imgs, gt, preds, reports, sample_dice = collect_predictions(
+        model_with, val_loader, n=64, tumor_only=True
+    )
 
     viz.plot_segmentation_results(imgs, gt, preds, n_samples=8,
                                   fname="with_text_seg_results.png")
@@ -176,21 +196,27 @@ def run(args):
     # Ablation visualisation
     viz.plot_ablation_study(history_with, history_without)
 
-    # Dice distribution
-    metrics_acc = SegmentationMetrics()
+    # ── Per-sample Dice distribution ──────────────────────────────────────
+    # Collect per-image Dice over the FULL val set for a meaningful histogram
+    all_dice = []
     model_with.eval()
     with torch.no_grad():
         for batch in val_loader:
-            img  = batch["image"].to(Config.DEVICE)
-            msk  = batch["mask"].to(Config.DEVICE)
-            te   = batch["text_embed"].to(Config.DEVICE)
-            out  = model_with(img, te)
-            metrics_acc.update(out["mask_pred"], msk)
+            img_b  = batch["image"].to(Config.DEVICE)
+            msk_b  = batch["mask"].to(Config.DEVICE)
+            te_b   = batch["text_embed"].to(Config.DEVICE)
+            out_b  = model_with(img_b, te_b)
+            pred_b = out_b["mask_pred"]
+            # Compute dice per image in the batch
+            for j in range(img_b.size(0)):
+                d = dice_coefficient(pred_b[j:j+1], msk_b[j:j+1])
+                all_dice.append(d)
 
-    viz.plot_dice_distribution(metrics_acc.per_sample_dice(),
-                               run_name="with_text")
+    viz.plot_dice_distribution(all_dice, run_name="with_text")
+
+    # Failure cases — use per-sample dice aligned with collected imgs
     viz.plot_failure_cases(imgs, gt, preds,
-                           metrics_acc.per_sample_dice()[:len(imgs)],
+                           sample_dice,
                            n_worst=6, run_name="with_text")
 
     # ── 7. Grad-CAM ───────────────────────────────────────────────────────────

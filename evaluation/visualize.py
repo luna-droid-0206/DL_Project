@@ -93,48 +93,80 @@ class Visualizer:
 
     # ── 6.2 Segmentation Results ──────────────────────────────────────────────
 
+    @staticmethod
+    def _make_rgba(mask: np.ndarray, color_rgb: tuple, alpha: float = 0.6
+                   ) -> np.ndarray:
+        """
+        Build an RGBA overlay array from a binary/probability mask.
+        Pixels where mask >= 0.5 get the given RGB colour; all others are
+        fully transparent.  This avoids colourmap artefacts on zero regions.
+
+        Args:
+            mask      : (H, W) float array in [0, 1]
+            color_rgb : (R, G, B) each in [0, 1]
+            alpha     : opacity for tumour pixels
+        Returns:
+            (H, W, 4) RGBA float array
+        """
+        H, W   = mask.shape
+        rgba   = np.zeros((H, W, 4), dtype=np.float32)
+        tumour = mask >= 0.5
+        rgba[tumour, 0] = color_rgb[0]
+        rgba[tumour, 1] = color_rgb[1]
+        rgba[tumour, 2] = color_rgb[2]
+        rgba[tumour, 3] = alpha          # transparent where no tumour
+        return rgba
+
     def plot_segmentation_results(self,
-                                  images:    np.ndarray,
-                                  gt_masks:  np.ndarray,
+                                  images:     np.ndarray,
+                                  gt_masks:   np.ndarray,
                                   pred_masks: np.ndarray,
-                                  n_samples: int = 4,
-                                  fname:     str = "seg_results.png"):
+                                  n_samples:  int = 4,
+                                  fname:      str = "seg_results.png"):
         """
         Grid: [Input MRI | GT mask | Predicted mask | Overlay] × n_samples
+        Each mask is drawn as an RGBA overlay so the brain is always visible.
         """
         n = min(n_samples, len(images))
         fig, axes = plt.subplots(n, 4, figsize=(16, 4 * n))
         fig.suptitle("Segmentation Results", fontsize=14, y=1.01,
                      color="#e0e0e0")
 
+        # Ensure axes is always 2-D even for n=1
+        if n == 1:
+            axes = axes[np.newaxis, :]
+
         col_titles = ["Input MRI", "Ground Truth", "Prediction", "Overlay"]
         for col, t in enumerate(col_titles):
             axes[0, col].set_title(t, fontsize=11, color="#e0e0e0")
+
+        # Colours: GT=red (#ff5555), Pred=yellow-green (#f1fa8c)
+        GT_COLOR   = (1.00, 0.33, 0.33)   # vivid red
+        PRED_COLOR = (0.95, 0.98, 0.55)   # yellow-green
 
         for row in range(n):
             img  = images[row].squeeze()
             gt   = gt_masks[row].squeeze()
             pred = pred_masks[row].squeeze()
 
-            # Input
-            axes[row, 0].imshow(img,  cmap="gray", vmin=0, vmax=1)
+            gt_rgba   = self._make_rgba(gt,   GT_COLOR,   alpha=0.65)
+            pred_rgba = self._make_rgba(pred, PRED_COLOR, alpha=0.65)
 
-            # GT mask — overlay on image (red for tumor)
+            # Col 0 — raw MRI
+            axes[row, 0].imshow(img, cmap="gray", vmin=0, vmax=1)
+
+            # Col 1 — Ground Truth overlay
             axes[row, 1].imshow(img, cmap="gray", vmin=0, vmax=1)
-            axes[row, 1].imshow(np.ma.masked_where(gt < 0.5, gt),
-                                cmap="Reds", alpha=0.6)
+            axes[row, 1].imshow(gt_rgba, interpolation="nearest")
 
-            # Pred mask — overlay on image (yellow for tumor)
+            # Col 2 — Prediction overlay
             axes[row, 2].imshow(img, cmap="gray", vmin=0, vmax=1)
-            axes[row, 2].imshow(np.ma.masked_where(pred < 0.5, pred),
-                                cmap="YlOrRd", alpha=0.6)
+            axes[row, 2].imshow(pred_rgba, interpolation="nearest")
 
-            # Overlay (GT=red, Pred=yellow combined)
+            # Col 3 — Combined overlay (GT=red, Pred=yellow, overlap=orange)
             axes[row, 3].imshow(img, cmap="gray", vmin=0, vmax=1)
-            axes[row, 3].imshow(np.ma.masked_where(gt   < 0.5, gt),
-                                cmap="Reds",   alpha=0.5)
-            axes[row, 3].imshow(np.ma.masked_where(pred < 0.5, pred),
-                                cmap="YlOrRd", alpha=0.45)
+            axes[row, 3].imshow(gt_rgba,   interpolation="nearest")
+            axes[row, 3].imshow(pred_rgba, interpolation="nearest")
 
             for col in range(4):
                 axes[row, col].axis("off")
@@ -251,38 +283,58 @@ class Visualizer:
                              f"{run_name}_dice_distribution.png")
 
     def plot_failure_cases(self,
-                           images:     np.ndarray,
-                           gt_masks:   np.ndarray,
-                           pred_masks: np.ndarray,
+                           images:      np.ndarray,
+                           gt_masks:    np.ndarray,
+                           pred_masks:  np.ndarray,
                            dice_scores: list,
-                           n_worst:    int = 6,
-                           run_name:   str = "run"):
+                           n_worst:     int = 6,
+                           run_name:    str = "run"):
         """
         Show the n_worst-performing slices (lowest Dice).
+        Each mask is rendered as an RGBA overlay so the brain remains visible.
         """
         scores  = np.array(dice_scores)
+        n_worst = min(n_worst, len(scores))
         indices = np.argsort(scores)[:n_worst]
 
+        GT_COLOR   = (1.00, 0.33, 0.33)
+        PRED_COLOR = (0.95, 0.98, 0.55)
+
         fig, axes = plt.subplots(n_worst, 3,
-                                 figsize=(12, 4 * n_worst))
+                                 figsize=(12, 4 * n_worst),
+                                 facecolor="#0f1117")
         fig.suptitle("Failure Cases (Lowest Dice Scores)",
                      fontsize=14, color="#e0e0e0")
+
+        # Ensure 2-D axes array
+        if n_worst == 1:
+            axes = axes[np.newaxis, :]
 
         for row, idx in enumerate(indices):
             img  = images[idx].squeeze()
             gt   = gt_masks[idx].squeeze()
             pred = pred_masks[idx].squeeze()
 
-            axes[row, 0].imshow(img, cmap="gray")
+            gt_rgba   = self._make_rgba(gt,   GT_COLOR,   alpha=0.65)
+            pred_rgba = self._make_rgba(pred, PRED_COLOR, alpha=0.65)
+
+            axes[row, 0].imshow(img, cmap="gray", vmin=0, vmax=1)
             axes[row, 0].set_title(f"Input  (Dice={scores[idx]:.3f})",
-                                   fontsize=9)
-            axes[row, 1].imshow(gt,   cmap="Reds",   alpha=0.85)
-            axes[row, 1].set_title("Ground Truth", fontsize=9)
-            axes[row, 2].imshow(pred, cmap="YlOrRd", alpha=0.85)
-            axes[row, 2].set_title("Prediction", fontsize=9)
+                                   fontsize=9, color="#e0e0e0")
+
+            axes[row, 1].imshow(img, cmap="gray", vmin=0, vmax=1)
+            axes[row, 1].imshow(gt_rgba, interpolation="nearest")
+            axes[row, 1].set_title("Ground Truth", fontsize=9,
+                                   color="#e0e0e0")
+
+            axes[row, 2].imshow(img, cmap="gray", vmin=0, vmax=1)
+            axes[row, 2].imshow(pred_rgba, interpolation="nearest")
+            axes[row, 2].set_title("Prediction", fontsize=9,
+                                   color="#e0e0e0")
 
             for col in range(3):
                 axes[row, col].axis("off")
+                axes[row, col].set_facecolor("#0f1117")
 
         fig.tight_layout()
         return self._savefig(fig, "error_analysis",

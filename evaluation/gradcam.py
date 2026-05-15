@@ -74,7 +74,7 @@ class GradCAM:
     def visualize(self, image: np.ndarray, cam: np.ndarray,
                   gt_mask: np.ndarray = None,
                   save_path: str = None, title: str = "Grad-CAM") -> str:
-        """Side-by-side: Input | Heatmap | Overlay | GT mask."""
+        """Side-by-side: Input | Heatmap | Overlay | GT mask overlay."""
         ncols = 4 if gt_mask is not None else 3
         fig, axes = plt.subplots(1, ncols, figsize=(5 * ncols, 5),
                                  facecolor="#0f1117")
@@ -92,7 +92,13 @@ class GradCAM:
         axes[2].set_title("Overlay", color="#e0e0e0")
 
         if gt_mask is not None:
-            axes[3].imshow(gt_mask, cmap="Reds", alpha=0.85)
+            # Build RGBA overlay: red where tumour, transparent elsewhere
+            gt_sq = gt_mask.squeeze()
+            rgba  = np.zeros((*gt_sq.shape, 4), dtype=np.float32)
+            tmr   = gt_sq >= 0.5
+            rgba[tmr] = [1.0, 0.33, 0.33, 0.65]
+            axes[3].imshow(image, cmap="gray", vmin=0, vmax=1)
+            axes[3].imshow(rgba, interpolation="nearest")
             axes[3].set_title("Ground Truth", color="#e0e0e0")
 
         for ax in axes:
@@ -120,17 +126,25 @@ class GradCAM:
                                  facecolor="#0f1117")
         fig.suptitle("Grad-CAM Attention Maps", fontsize=14, color="#e0e0e0")
 
+        # Ensure 2-D axes array when n==1
+        if n == 1:
+            axes = axes[np.newaxis, :]
+
         for row in range(n):
             img = images[row].squeeze()
             cam = cams[row]
-            axes[row, 0].imshow(img, cmap="gray")
+            axes[row, 0].imshow(img, cmap="gray", vmin=0, vmax=1)
             axes[row, 1].imshow(cam, cmap="inferno")
             hm_rgb  = cm.inferno(cam)[..., :3]
             overlay = np.clip(0.55 * np.stack([img]*3, -1) + 0.45 * hm_rgb, 0, 1)
             axes[row, 2].imshow(overlay)
             if gt_masks is not None:
-                axes[row, 3].imshow(gt_masks[row].squeeze(),
-                                    cmap="Reds", alpha=0.85)
+                # RGBA overlay: red tumour on top of grayscale MRI
+                gt_sq = gt_masks[row].squeeze()
+                rgba  = np.zeros((*gt_sq.shape, 4), dtype=np.float32)
+                rgba[gt_sq >= 0.5] = [1.0, 0.33, 0.33, 0.65]
+                axes[row, 3].imshow(img, cmap="gray", vmin=0, vmax=1)
+                axes[row, 3].imshow(rgba, interpolation="nearest")
             for col in range(nc):
                 axes[row, col].axis("off")
 
