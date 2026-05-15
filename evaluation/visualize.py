@@ -116,19 +116,20 @@ class Visualizer:
             gt   = gt_masks[row].squeeze()
             pred = pred_masks[row].squeeze()
 
-            # Overlay: image with red GT and yellow pred contours
-            overlay = np.stack([img, img, img], axis=-1)
-
             # Input
             axes[row, 0].imshow(img,  cmap="gray", vmin=0, vmax=1)
 
-            # GT mask
-            axes[row, 1].imshow(gt,   cmap="Reds",   alpha=0.85)
+            # GT mask — overlay on image (red for tumor)
+            axes[row, 1].imshow(img, cmap="gray", vmin=0, vmax=1)
+            axes[row, 1].imshow(np.ma.masked_where(gt < 0.5, gt),
+                                cmap="Reds", alpha=0.6)
 
-            # Pred mask
-            axes[row, 2].imshow(pred, cmap="YlOrRd", alpha=0.85)
+            # Pred mask — overlay on image (yellow for tumor)
+            axes[row, 2].imshow(img, cmap="gray", vmin=0, vmax=1)
+            axes[row, 2].imshow(np.ma.masked_where(pred < 0.5, pred),
+                                cmap="YlOrRd", alpha=0.6)
 
-            # Overlay (GT=red, Pred=yellow)
+            # Overlay (GT=red, Pred=yellow combined)
             axes[row, 3].imshow(img, cmap="gray", vmin=0, vmax=1)
             axes[row, 3].imshow(np.ma.masked_where(gt   < 0.5, gt),
                                 cmap="Reds",   alpha=0.5)
